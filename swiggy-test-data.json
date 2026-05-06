@@ -1,0 +1,133 @@
+{
+  "users": {
+    "normalUsers": [
+      {
+        "name": "Rahul Sharma",
+        "email": "rahul@test.com",
+        "password": "123456",
+        "role": "user"
+      },
+      {
+        "name": "Priya Mehta",
+        "email": "priya@test.com",
+        "password": "123456",
+        "role": "user"
+      }
+    ],
+    "restaurantOwners": [
+      {
+        "name": "Amit Restaurant",
+        "email": "amit@pizza.com",
+        "password": "123456",
+        "role": "restaurant"
+      },
+      {
+        "name": "Ravi Burger",
+        "email": "ravi@burger.com",
+        "password": "123456",
+        "role": "restaurant"
+      },
+      {
+        "name": "Lakshmi Dosa",
+        "email": "lakshmi@dosa.com",
+        "password": "123456",
+        "role": "restaurant"
+      }
+    ]
+  },
+  "admins": [
+    {
+      "name": "Super Admin",
+      "email": "admin@test.com",
+      "password": "123456",
+      "role": "admin"
+    }
+  ],
+  "restaurants": [
+    {
+      "name": "Pizza Palace",
+      "city": "Bangalore",
+      "address": "Indiranagar, Bangalore",
+      "image": "https://example.com/pizza-palace.jpg"
+    },
+    {
+      "name": "Burger Hub",
+      "city": "Bangalore",
+      "address": "Indiranagar, Bangalore",
+      "image": "https://example.com/burger-hub.jpg"
+    }
+  ],
+  "menuItems": {
+    "pizzaPalace": [
+      {
+        "name": "Veg Margherita",
+        "description": "Classic cheese pizza",
+        "price": 299,
+        "category": "main course",
+        "isveg": true,
+        "image": "https://example.com/margherita.jpg"
+      },
+      {
+        "name": "Farmhouse Pizza",
+        "description": "Loaded with veggies",
+        "price": 399,
+        "category": "main course",
+        "isveg": true,
+        "image": "https://example.com/farmhouse.jpg"
+      },
+      {
+        "name": "Chicken Pepperoni",
+        "description": "Spicy non-veg pizza",
+        "price": 449,
+        "category": "main course",
+        "isveg": false,
+        "image": "https://example.com/pepperoni.jpg"
+      }
+    ],
+    "burgerHub": [
+      {
+        "name": "Classic Veg Burger",
+        "description": "Crispy patty with lettuce and mayo",
+        "price": 199,
+        "category": "main course",
+        "isveg": true,
+        "image": "https://example.com/veg-burger.jpg"
+      },
+      {
+        "name": "Chicken Cheese Burger",
+        "description": "Juicy chicken patty with cheese slice",
+        "price": 249,
+        "category": "main course",
+        "isveg": false,
+        "image": "https://example.com/chicken-burger.jpg"
+      },
+      {
+        "name": "French Fries",
+        "description": "Crispy salted fries",
+        "price": 99,
+        "category": "starter",
+        "isveg": true,
+        "image": "https://example.com/fries.jpg"
+      }
+    ]
+  },
+  "cartTesting": {
+    "addVegMargherita": {
+      "menuItemId": "REPLACE_WITH_MENU_ID",
+      "quantity": 2
+    },
+    "addFarmhousePizza": {
+      "menuItemId": "REPLACE_WITH_MENU_ID",
+      "quantity": 1
+    },
+    "crossRestaurantTest": {
+      "menuItemId": "BURGER_MENU_ID",
+      "quantity": 1
+    }
+  },
+  "orderTesting": {
+    "placeOrder": {
+      "deliveryAddress": "Koramangala, Bangalore"
+    }
+  }
+}
