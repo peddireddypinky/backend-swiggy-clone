@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
 
-const { protect, authorize } = require('../config/middleware/authmiddleware');
+const { protect, adminOnly } = require('../config/middleware/authmiddleware');
 const { getallUsers, toggleBlockUser, approveRestaurant, getallorders, getPlatformStatistics } = require('../controllers/AdminController');
 
 
 router.use(protect);
-router.use(authorize("admin"));
+router.use(adminOnly);
 
 
 router.get("/", getallUsers);

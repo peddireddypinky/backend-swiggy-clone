@@ -68,3 +68,5 @@ exports.authorize = (...roles) => {
         next();
     };
 };
+
+exports.adminOnly = exports.authorize("admin");

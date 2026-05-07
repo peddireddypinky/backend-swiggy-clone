@@ -6,7 +6,6 @@ const orderSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-      unique: true,
     },
     restaurant: {
       type: mongoose.Schema.Types.ObjectId,
@@ -45,12 +44,34 @@ const orderSchema = new mongoose.Schema(
         "out for delivery",
         "delivered",
         "cancelled",
+        "rejected",
       ],
       default: "pending",
     },
     deliveryAddress: {
       type: String,
       required: true,
+    },
+    couponCode: {
+      type: String,
+      default: null,
+    },
+    refundAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    riskScore: {
+      type: Number,
+      default: 0,
+    },
+    isSuspicious: {
+      type: Boolean,
+      default: false,
+    },
+    fraudReason: {
+      type: String,
+      default: "",
     },
   },
   { timestamps: true }

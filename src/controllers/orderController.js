@@ -1,10 +1,26 @@
 const Order = require("../config/models/Order");
 const Cart = require("../config/models/Cart");
 const Restaurant = require("../config/models/restaurant");
+const FraudLogs = require("../config/models/FraudLogs");
+const { buildFraudScore } = require("../services/fraudService");
 
-exports.placeOrder = async (req, res) => {
+exports.createOrder = async (req, res) => {
     try {
-        const { deliveryAddress } = req.body;
+        if (req.user.isRestricted) {
+            return res.status(403).json({
+                success: false,
+                message: "Your account is restricted by admin",
+            });
+        }
+
+        const { deliveryAddress, couponCode } = req.body;
+        if (!deliveryAddress) {
+            return res.status(400).json({
+                success: false,
+                message: "deliveryAddress is required",
+            });
+        }
+
         const cart = await Cart.findOne({ user: req.user._id })
             .populate("items.menuItem")
             .populate("restaurant");
@@ -36,7 +52,28 @@ exports.placeOrder = async (req, res) => {
             items,
             totalAmount: totalPrice,
             deliveryAddress,
+            couponCode: couponCode || null,
         });
+
+        const fraudAssessment = await buildFraudScore({
+            userId: req.user._id,
+            couponCode: couponCode || null,
+        });
+        order.riskScore = fraudAssessment.riskScore;
+        order.isSuspicious = fraudAssessment.isSuspicious;
+        order.fraudReason = fraudAssessment.fraudReason;
+        await order.save();
+
+        if (fraudAssessment.isSuspicious) {
+            await FraudLogs.create({
+                user: req.user._id,
+                order: order._id,
+                riskScore: fraudAssessment.riskScore,
+                fraudReason: fraudAssessment.fraudReason,
+                action: "flagged",
+            });
+        }
+
         await Cart.findOneAndDelete({ user: req.user._id });
         res.status(201).json({
             success: true,
@@ -46,6 +83,74 @@ exports.placeOrder = async (req, res) => {
     } catch (error) {
         res.status(500).json({
             message: error.message
+        });
+    }
+};
+
+exports.placeOrder = exports.createOrder;
+
+exports.cancelOrder = async (req, res) => {
+    try {
+        if (req.user.isRestricted) {
+            return res.status(403).json({
+                success: false,
+                message: "Your account is restricted by admin",
+            });
+        }
+
+        const { orderId } = req.params;
+        const order = await Order.findById(orderId);
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: "Order not found",
+            });
+        }
+
+        if (order.user.toString() !== req.user._id.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: "You can cancel only your own orders",
+            });
+        }
+
+        if (order.orderStatus === "cancelled") {
+            return res.status(400).json({
+                success: false,
+                message: "Order is already cancelled",
+            });
+        }
+
+        order.orderStatus = "cancelled";
+
+        const fraudAssessment = await buildFraudScore({
+            userId: req.user._id,
+            couponCode: order.couponCode,
+        });
+        order.riskScore = fraudAssessment.riskScore;
+        order.isSuspicious = fraudAssessment.isSuspicious;
+        order.fraudReason = fraudAssessment.fraudReason;
+        await order.save();
+
+        if (fraudAssessment.isSuspicious) {
+            await FraudLogs.create({
+                user: req.user._id,
+                order: order._id,
+                riskScore: fraudAssessment.riskScore,
+                fraudReason: fraudAssessment.fraudReason,
+                action: "flagged",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Order cancelled successfully",
+            data: order,
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message,
         });
     }
 };
@@ -131,7 +236,7 @@ exports.updateOrderStatus = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Not authorized' });
         }
         
-        order.orderstatus = status;
+        order.orderStatus = status;
         await order.save();
         res.status(200).json({ success: true, message: 'Order status updated', data: order });
     } catch (error) {
