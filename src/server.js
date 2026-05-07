@@ -6,13 +6,22 @@ const connectDB = require("./config/db");
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
-    console.log("🚀 Starting server...");
+    try {
+        console.log("🚀 Starting server...");
 
-    await connectDB();
+        // Connect to DB
+        await connectDB();
+        console.log("✅ Database connected successfully");
 
-    app.listen(PORT, () => {
-        console.log(`✅ Server is running on port ${PORT}`);
-    });
+        // Start server
+        app.listen(PORT, () => {
+            console.log(`✅ Server is running on port ${PORT}`);
+        });
+
+    } catch (error) {
+        console.error("❌ Server failed to start:", error.message);
+        process.exit(1); // stop app if DB fails
+    }
 };
 
 startServer();
