@@ -1,13 +1,9 @@
 const express = require('express');
 const cors = require('cors');
-const dns = require("node:dns/promises");
 require("dotenv").config();
 
 const app = express();
 
-
-dns.setServers(["8.8.8.8", "1.1.1.1"]);
-console.log("DNS servers set to:", dns.getServers());
 // Middleware
 app.use(cors());
 app.use(express.json());

@@ -1,18 +1,25 @@
 const mongoose = require('mongoose');
 
 const connectDB = async () => {
+    console.log("🔄 Connecting to MongoDB...");
+    const primaryUri = process.env.MONGO_URI;
+    const fallbackUri = process.env.MONGO_URI_DIRECT;
+
     try {
-        console.log("🔄 Connecting to MongoDB...");
-        console.log("URI:", process.env.MONGO_URI); // debug (remove later)
-
-        await mongoose.connect(process.env.MONGO_URI, {
-            serverSelectionTimeoutMS: 5000, // fail fast if cannot connect
+        await mongoose.connect(primaryUri, {
+            serverSelectionTimeoutMS: 10000,
         });
-
         console.log("✅ MongoDB connected successfully");
+        return;
     } catch (error) {
-        console.error("❌ MongoDB connection failed:", error.message);
-        process.exit(1);
+        if (!fallbackUri) {
+            throw error;
+        }
+        console.warn(`Primary URI failed, retrying with direct URI: ${error.message}`);
+        await mongoose.connect(fallbackUri, {
+            serverSelectionTimeoutMS: 10000,
+        });
+        console.log("✅ MongoDB connected successfully (direct URI fallback)");
     }
 };
 

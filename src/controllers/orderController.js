@@ -3,6 +3,9 @@ const Cart = require("../config/models/Cart");
 const Restaurant = require("../config/models/restaurant");
 const FraudLogs = require("../config/models/FraudLogs");
 const { buildFraudScore } = require("../services/fraudService");
+const mongoose = require("mongoose");
+
+const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 exports.createOrder = async (req, res) => {
     try {
@@ -81,7 +84,8 @@ exports.createOrder = async (req, res) => {
             data: order,
         });
     } catch (error) {
-        res.status(500).json({
+        return res.status(500).json({
+            success: false,
             message: error.message
         });
     }
@@ -99,6 +103,13 @@ exports.cancelOrder = async (req, res) => {
         }
 
         const { orderId } = req.params;
+        if (!isValidObjectId(orderId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid order id",
+            });
+        }
+
         const order = await Order.findById(orderId);
         if (!order) {
             return res.status(404).json({
@@ -122,6 +133,8 @@ exports.cancelOrder = async (req, res) => {
         }
 
         order.orderStatus = "cancelled";
+        // Persist current cancellation before recalculating user fraud score.
+        await order.save();
 
         const fraudAssessment = await buildFraudScore({
             userId: req.user._id,
@@ -155,6 +168,83 @@ exports.cancelOrder = async (req, res) => {
     }
 };
 
+exports.requestRefund = async (req, res) => {
+    try {
+        if (req.user.isRestricted) {
+            return res.status(403).json({
+                success: false,
+                message: "Your account is restricted by admin",
+            });
+        }
+
+        const { orderId } = req.params;
+        const { refundAmount } = req.body;
+
+        if (!isValidObjectId(orderId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid order id",
+            });
+        }
+
+        const parsedRefundAmount = Number(refundAmount);
+        if (!Number.isFinite(parsedRefundAmount) || parsedRefundAmount <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Valid refundAmount is required and must be greater than 0",
+            });
+        }
+
+        const order = await Order.findById(orderId);
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: "Order not found",
+            });
+        }
+
+        if (order.user.toString() !== req.user._id.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: "You can request refund only for your own orders",
+            });
+        }
+
+        order.refundAmount += parsedRefundAmount;
+        await order.save();
+
+        const fraudAssessment = await buildFraudScore({
+            userId: req.user._id,
+            couponCode: order.couponCode,
+        });
+        order.riskScore = fraudAssessment.riskScore;
+        order.isSuspicious = fraudAssessment.isSuspicious;
+        order.fraudReason = fraudAssessment.fraudReason;
+        await order.save();
+
+        if (fraudAssessment.isSuspicious) {
+            await FraudLogs.create({
+                user: req.user._id,
+                order: order._id,
+                riskScore: fraudAssessment.riskScore,
+                fraudReason: fraudAssessment.fraudReason,
+                action: "flagged",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Refund request recorded successfully",
+            data: order,
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message || "Error while processing refund request",
+        });
+    }
+};
+
 exports.mockPayment = async (req, res) => {
     try {
         const { orderId } = req.body;
@@ -163,6 +253,12 @@ exports.mockPayment = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: "orderId is required",
+            });
+        }
+        if (!isValidObjectId(orderId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid order id",
             });
         }
 
@@ -196,14 +292,13 @@ exports.mockPayment = async (req, res) => {
 exports.getMyOrders = async (req, res) => {
     try {
         const orders = await Order.find({ user: req.user._id })
-            .populate("restaurant",
-            );
-        res.status(200).json({
+            .populate("restaurant");
+        return res.status(200).json({
             success: true,
             data: orders,
         });
     } catch (error) {
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: error.message,
         });
@@ -229,6 +324,10 @@ exports.updateOrderStatus = async (req, res) => {
     try {
         const { id } = req.params;
         const { status } = req.body;
+        if (!isValidObjectId(id)) {
+            return res.status(400).json({ success: false, message: "Invalid order id" });
+        }
+
         const order = await Order.findById(id).populate("restaurant");
         
         if (!order) return res.status(404).json({ success: false, message: 'Order not found' });

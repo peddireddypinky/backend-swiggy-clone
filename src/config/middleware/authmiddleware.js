@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const User = require("../models/User");
 
 exports.protect = async (req, res, next) => {
     try {
@@ -15,6 +15,13 @@ exports.protect = async (req, res, next) => {
 
         
         const token = authHeader.split(" ")[1];
+
+        if (!process.env.JWT_SECRET) {
+            return res.status(500).json({
+                success: false,
+                message: "JWT secret is not configured",
+            });
+        }
 
         
         const decoded = jwt.verify(token, process.env.JWT_SECRET);

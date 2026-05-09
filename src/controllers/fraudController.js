@@ -1,6 +1,9 @@
 const Order = require("../config/models/Order");
 const User = require("../config/models/User");
 const FraudLogs = require("../config/models/FraudLogs");
+const mongoose = require("mongoose");
+
+const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 exports.getSuspiciousOrders = async (req, res) => {
     try {
@@ -25,6 +28,13 @@ exports.getSuspiciousOrders = async (req, res) => {
 exports.approveSuspiciousOrder = async (req, res) => {
     try {
         const { orderId } = req.params;
+        if (!isValidObjectId(orderId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid order id",
+            });
+        }
+
         const order = await Order.findById(orderId);
         if (!order) {
             return res.status(404).json({
@@ -62,6 +72,13 @@ exports.approveSuspiciousOrder = async (req, res) => {
 exports.rejectSuspiciousOrder = async (req, res) => {
     try {
         const { orderId } = req.params;
+        if (!isValidObjectId(orderId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid order id",
+            });
+        }
+
         const order = await Order.findById(orderId);
         if (!order) {
             return res.status(404).json({
@@ -99,6 +116,13 @@ exports.rejectSuspiciousOrder = async (req, res) => {
 exports.restrictUser = async (req, res) => {
     try {
         const { userId } = req.params;
+        if (!isValidObjectId(userId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid user id",
+            });
+        }
+
         const user = await User.findById(userId);
         if (!user) {
             return res.status(404).json({

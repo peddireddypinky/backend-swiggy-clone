@@ -4,7 +4,14 @@ const restaurantSchema = new mongoose.Schema(
     {
         name: {
             type: String,
-            required: true
+            required: true,
+            trim: true,
+        },
+        cuisine: {
+            type: String,
+            required: true,
+            default: "Unknown",
+            trim: true,
         },
         owner: {
             type: mongoose.Schema.Types.ObjectId,
@@ -22,6 +29,29 @@ const restaurantSchema = new mongoose.Schema(
         rating: {
             type: Number,
             default: 0,
+            min: 0,
+            max: 5,
+        },
+        priceRange: {
+            type: Number,
+            required: true,
+            default: 1,
+            min: 1,
+        },
+        deliveryTime: {
+            type: Number,
+            required: true,
+            default: 30,
+            min: 1,
+        },
+        isVeg: {
+            type: Boolean,
+            default: false,
+        },
+        popularity: {
+            type: Number,
+            default: 0,
+            min: 0,
         },
         image: {
             type: String,
@@ -33,5 +63,11 @@ const restaurantSchema = new mongoose.Schema(
     },
     { timestamps: true }
 );
+
+restaurantSchema.index({ name: "text", cuisine: "text" });
+restaurantSchema.index({ cuisine: 1, rating: -1 });
+restaurantSchema.index({ deliveryTime: 1 });
+restaurantSchema.index({ popularity: -1 });
+restaurantSchema.index({ isVeg: 1, priceRange: 1 });
 
 module.exports = mongoose.model("Restaurant", restaurantSchema);
