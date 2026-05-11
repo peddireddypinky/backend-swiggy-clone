@@ -10,6 +10,9 @@ const {
     getPlatformStatistics,
     createRestaurantByAdmin,
     updateRestaurantByAdmin,
+    createSurgeSetting,
+    getSurgeSettings,
+    updateSurgeSetting,
 } = require('../controllers/AdminController');
 
 
@@ -24,6 +27,10 @@ router.get("/statistics", getPlatformStatistics);
 router.get("/orders", getallorders);
 router.post("/restaurants/create", createRestaurantByAdmin);
 router.put("/restaurants/update/:restaurantId", updateRestaurantByAdmin);
+
+router.post("/surge-settings", createSurgeSetting);
+router.get("/surge-settings", getSurgeSettings);
+router.put("/surge-settings/:id", updateSurgeSetting);
 
 
 module.exports = router;

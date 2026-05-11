@@ -1,6 +1,7 @@
 const Order = require("../config/models/Order");
 const User = require("../config/models/User");
 const Restaurant = require("../config/models/restaurant");
+const SurgeSetting = require("../config/models/SurgeSetting");
 const mongoose = require("mongoose");
 
 const validateRestaurantPayload = (payload = {}, isUpdate = false) => {
@@ -262,6 +263,124 @@ exports.updateRestaurantByAdmin = async (req, res) => {
             success: false,
             message: "Error updating restaurant",
             error: error.message,
+        });
+    }
+};
+
+const validateSurgePayload = (payload = {}, isUpdate = false) => {
+    const errors = [];
+
+    if (!isUpdate) {
+        if (!payload.region || typeof payload.region !== "string" || !payload.region.trim()) {
+            errors.push("region is required");
+        }
+    }
+
+    if (payload.baseDeliveryFee !== undefined) {
+        const v = Number(payload.baseDeliveryFee);
+        if (!Number.isFinite(v) || v < 0) errors.push("baseDeliveryFee must be a number >= 0");
+    }
+
+    if (payload.surgeMultiplier !== undefined) {
+        const v = Number(payload.surgeMultiplier);
+        if (!Number.isFinite(v) || v < 1) errors.push("surgeMultiplier must be a number >= 1");
+    }
+
+    if (payload.demandThreshold !== undefined) {
+        const v = Number(payload.demandThreshold);
+        if (!Number.isFinite(v) || v < 0) errors.push("demandThreshold must be a number >= 0");
+    }
+
+    if (payload.peakHours !== undefined) {
+        if (!Array.isArray(payload.peakHours)) {
+            errors.push("peakHours must be an array");
+        } else {
+            for (const window of payload.peakHours) {
+                if (!window || typeof window !== "object") {
+                    errors.push("peakHours entries must be objects");
+                    break;
+                }
+                if (typeof window.start !== "string" || typeof window.end !== "string") {
+                    errors.push("peakHours entries must have start and end strings");
+                    break;
+                }
+            }
+        }
+    }
+
+    return errors;
+};
+
+exports.createSurgeSetting = async (req, res) => {
+    try {
+        const errors = validateSurgePayload(req.body, false);
+        if (errors.length > 0) {
+            return res.status(400).json({ success: false, message: errors.join(", ") });
+        }
+
+        const payload = {
+            region: req.body.region.trim(),
+            baseDeliveryFee: req.body.baseDeliveryFee ?? 30,
+            surgeMultiplier: req.body.surgeMultiplier ?? 1.5,
+            demandThreshold: req.body.demandThreshold ?? 25,
+            peakHours: req.body.peakHours ?? [],
+        };
+
+        const created = await SurgeSetting.create(payload);
+        return res.status(201).json({ success: true, message: "Surge setting created", data: created });
+    } catch (error) {
+        const isDup = error?.code === 11000;
+        return res.status(isDup ? 409 : 500).json({
+            success: false,
+            message: isDup ? "Surge setting already exists for this region" : error.message,
+        });
+    }
+};
+
+exports.getSurgeSettings = async (req, res) => {
+    try {
+        const settings = await SurgeSetting.find().sort({ region: 1, createdAt: -1 });
+        return res.status(200).json({ success: true, data: settings, count: settings.length });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.updateSurgeSetting = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: "Invalid surge setting id" });
+        }
+
+        const errors = validateSurgePayload(req.body, true);
+        if (errors.length > 0) {
+            return res.status(400).json({ success: false, message: errors.join(", ") });
+        }
+
+        const update = {};
+        if (req.body.region !== undefined) update.region = String(req.body.region).trim();
+        if (req.body.baseDeliveryFee !== undefined) update.baseDeliveryFee = Number(req.body.baseDeliveryFee);
+        if (req.body.surgeMultiplier !== undefined) update.surgeMultiplier = Number(req.body.surgeMultiplier);
+        if (req.body.demandThreshold !== undefined) update.demandThreshold = Number(req.body.demandThreshold);
+        if (req.body.peakHours !== undefined) update.peakHours = req.body.peakHours;
+
+        const updated = await SurgeSetting.findByIdAndUpdate(
+            id,
+            { $set: update },
+            { new: true, runValidators: true }
+        );
+
+        if (!updated) {
+            return res.status(404).json({ success: false, message: "Surge setting not found" });
+        }
+
+        return res.status(200).json({ success: true, message: "Surge setting updated", data: updated });
+    } catch (error) {
+        const isDup = error?.code === 11000;
+        return res.status(isDup ? 409 : 500).json({
+            success: false,
+            message: isDup ? "Surge setting already exists for this region" : error.message,
         });
     }
 };

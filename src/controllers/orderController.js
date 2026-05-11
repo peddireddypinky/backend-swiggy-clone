@@ -2,10 +2,116 @@ const Order = require("../config/models/Order");
 const Cart = require("../config/models/Cart");
 const Restaurant = require("../config/models/restaurant");
 const FraudLogs = require("../config/models/FraudLogs");
+const SurgeSetting = require("../config/models/SurgeSetting");
 const { buildFraudScore } = require("../services/fraudService");
 const mongoose = require("mongoose");
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+
+const parseTimeToMinutes = (hhmm) => {
+    if (typeof hhmm !== "string") return null;
+    const match = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+    return hours * 60 + minutes;
+};
+
+const isNowInPeakHours = (peakHours = [], now = new Date()) => {
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    for (const window of peakHours) {
+        const start = parseTimeToMinutes(window?.start);
+        const end = parseTimeToMinutes(window?.end);
+        if (start === null || end === null) continue;
+
+        // supports windows that cross midnight
+        if (start <= end) {
+            if (nowMinutes >= start && nowMinutes <= end) return true;
+        } else {
+            if (nowMinutes >= start || nowMinutes <= end) return true;
+        }
+    }
+    return false;
+};
+
+const getActiveOrderVolumeForRegion = async (region, windowMinutes = 30) => {
+    const since = new Date(Date.now() - windowMinutes * 60 * 1000);
+    const activeStatuses = ["pending", "confirmed", "preparing", "out for delivery"];
+
+    const result = await Order.aggregate([
+        {
+            $match: {
+                region,
+                createdAt: { $gte: since },
+                orderStatus: { $in: activeStatuses },
+            },
+        },
+        { $group: { _id: null, count: { $sum: 1 } } },
+    ]);
+
+    return result?.[0]?.count ?? 0;
+};
+
+const calculateSurge = async ({ region, now = new Date() }) => {
+    const setting =
+        (await SurgeSetting.findOne({ region })) ||
+        (await SurgeSetting.findOne({ region: "default" }));
+
+    const baseDeliveryFee = setting?.baseDeliveryFee ?? 30;
+    const peakMultiplier = setting?.surgeMultiplier ?? 1.5;
+    const demandThreshold = setting?.demandThreshold ?? 25;
+    const peakHours = setting?.peakHours ?? [];
+
+    const isPeak = isNowInPeakHours(peakHours, now);
+    const activeOrderVolume = await getActiveOrderVolumeForRegion(region, 30);
+    const isHighDemand = activeOrderVolume >= demandThreshold;
+
+    let surgeMultiplier = 1;
+    if (isPeak) surgeMultiplier = Math.max(surgeMultiplier, peakMultiplier);
+    if (isHighDemand) surgeMultiplier = Math.max(surgeMultiplier, 2);
+
+    const deliveryFee = Math.round(baseDeliveryFee * surgeMultiplier);
+
+    return {
+        region,
+        baseDeliveryFee,
+        surgeMultiplier,
+        deliveryFee,
+        demandThreshold,
+        activeOrderVolume,
+        isPeak,
+        isHighDemand,
+        peakHours,
+        settingId: setting?._id ?? null,
+    };
+};
+
+exports.calculateDeliveryFee = async (req, res) => {
+    try {
+        const { region } = req.body;
+        if (!region || typeof region !== "string" || !region.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: "region is required",
+            });
+        }
+
+        const regionValue = region.trim();
+        const result = await calculateSurge({ region: regionValue, now: new Date() });
+
+        return res.status(200).json({
+            success: true,
+            data: result,
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
 
 exports.createOrder = async (req, res) => {
     try {
@@ -16,7 +122,7 @@ exports.createOrder = async (req, res) => {
             });
         }
 
-        const { deliveryAddress, couponCode } = req.body;
+        const { deliveryAddress, couponCode, region } = req.body;
         if (!deliveryAddress) {
             return res.status(400).json({
                 success: false,
@@ -39,6 +145,14 @@ exports.createOrder = async (req, res) => {
                 message: "Restaurant is not approved yet. Please try again later.",
             });
         }
+
+        const regionValue =
+            (typeof region === "string" && region.trim()
+                ? region.trim()
+                : cart.restaurant.city) || "default";
+
+        const pricing = await calculateSurge({ region: regionValue, now: new Date() });
+
         const items = cart.items.map((item) => ({
             menuItem: item.menuItem._id,
             quantity: item.quantity,
@@ -55,6 +169,9 @@ exports.createOrder = async (req, res) => {
             items,
             totalAmount: totalPrice,
             deliveryAddress,
+            region: regionValue,
+            deliveryFee: pricing.deliveryFee,
+            surgeMultiplier: pricing.surgeMultiplier,
             couponCode: couponCode || null,
         });
 

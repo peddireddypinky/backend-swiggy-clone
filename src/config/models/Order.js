@@ -52,6 +52,22 @@ const orderSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    region: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+    },
+    deliveryFee: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    surgeMultiplier: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
     couponCode: {
       type: String,
       default: null,
