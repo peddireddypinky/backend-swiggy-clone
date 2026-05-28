@@ -16,6 +16,7 @@ const cartRoutes = require("./routes/cartRoutes");
 const orderRoutes = require("./routes/orderRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const fraudRoutes = require("./routes/fraudRoutes");
+const deliveryRoutes = require("./routes/deliveryRoutes");
 
 // API Routes
 app.use("/api/auth", authRoutes);
@@ -25,6 +26,7 @@ app.use("/api/cart", cartRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin/fraud", fraudRoutes);
+app.use("/api/delivery", deliveryRoutes);
 
 // Root route
 app.get('/', (req, res) => {

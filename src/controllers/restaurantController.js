@@ -1,4 +1,7 @@
 const Restaurant = require("../config/models/restaurant");
+const Order = require("../config/models/Order");
+const User = require("../config/models/User");
+const mongoose = require("mongoose");
 
 const parsePositiveNumber = (value) => {
     if (value === undefined) {
@@ -324,3 +327,138 @@ exports.searchRestaurants = async (req, res) => {
         });
     }
 };
+
+exports.getRecommendations = async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        // 1. Validate userId using ObjectId validation
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid userId",
+            });
+        }
+
+        // 2. Validate if user exists
+        const userExists = await User.findById(userId);
+        if (!userExists) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found",
+            });
+        }
+
+        // 3. Check if there are any approved restaurants
+        const approvedRestaurantCount = await Restaurant.countDocuments({ isApproved: true });
+        if (approvedRestaurantCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No restaurants found in the database",
+            });
+        }
+
+        const userObjectId = new mongoose.Types.ObjectId(userId);
+
+        // 4. Analyze historical order data using MongoDB aggregation pipeline on Order collection
+        const userPrefs = await Order.aggregate([
+            { $match: { user: userObjectId } },
+            {
+                $lookup: {
+                    from: "restaurants",
+                    localField: "restaurant",
+                    foreignField: "_id",
+                    as: "restaurantInfo",
+                },
+            },
+            { $unwind: "$restaurantInfo" },
+            {
+                $facet: {
+                    frequentRestaurants: [
+                        { $group: { _id: "$restaurant", count: { $sum: 1 } } },
+                    ],
+                    preferredCuisines: [
+                        { $group: { _id: "$restaurantInfo.cuisine", count: { $sum: 1 } } },
+                    ],
+                },
+            },
+        ]);
+
+        const frequentRestaurants = userPrefs[0]?.frequentRestaurants || [];
+        const preferredCuisines = userPrefs[0]?.preferredCuisines || [];
+
+        // 5. Construct expressions for scoring
+        const orderFrequencyExpr = frequentRestaurants.length > 0
+            ? {
+                $switch: {
+                    branches: frequentRestaurants.map((item) => ({
+                        case: { $eq: ["$_id", item._id] },
+                        then: item.count,
+                    })),
+                    default: 0,
+                },
+            }
+            : 0;
+
+        const cuisineSimilarityExpr = preferredCuisines.length > 0
+            ? {
+                $switch: {
+                    branches: preferredCuisines.map((item) => ({
+                        case: { $eq: ["$cuisine", item._id] },
+                        then: item.count,
+                    })),
+                    default: 0,
+                },
+            }
+            : 0;
+
+        // 6. Aggregate on Restaurant collection to calculate scores and rank recommendations
+        const recommendations = await Restaurant.aggregate([
+            { $match: { isApproved: true } },
+            {
+                $addFields: {
+                    orderFrequency: orderFrequencyExpr,
+                    cuisineSimilarityCount: cuisineSimilarityExpr,
+                },
+            },
+            {
+                $addFields: {
+                    recommendationScore: {
+                        $add: [
+                            { $multiply: ["$orderFrequency", 5] },
+                            { $multiply: ["$cuisineSimilarityCount", 3] },
+                            { $ifNull: ["$rating", 0] },
+                            { $multiply: [{ $ifNull: ["$popularity", 0] }, 0.1] },
+                        ],
+                    },
+                },
+            },
+            {
+                $sort: {
+                    recommendationScore: -1,
+                    rating: -1,
+                    popularity: -1,
+                },
+            },
+            { $limit: 10 },
+        ]);
+
+        if (!recommendations || recommendations.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No recommendations available",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: recommendations,
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Error fetching recommendations",
+            error: error.message,
+        });
+    }
+};

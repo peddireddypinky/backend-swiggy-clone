@@ -60,9 +60,22 @@ const restaurantSchema = new mongoose.Schema(
             type: Boolean,
             default: false,
         },
+        location: {
+            type: {
+                type: String,
+                enum: ["Point"],
+                default: "Point",
+            },
+            coordinates: {
+                type: [Number],
+                default: undefined,
+            },
+        },
     },
     { timestamps: true }
 );
+
+restaurantSchema.index({ location: "2dsphere" });
 
 restaurantSchema.index({ name: "text", cuisine: "text" });
 restaurantSchema.index({ cuisine: 1, rating: -1 });

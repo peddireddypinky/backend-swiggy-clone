@@ -13,6 +13,7 @@ const {
     createSurgeSetting,
     getSurgeSettings,
     updateSurgeSetting,
+    getDeliveryPartners,
 } = require('../controllers/AdminController');
 
 
@@ -31,6 +32,7 @@ router.put("/restaurants/update/:restaurantId", updateRestaurantByAdmin);
 router.post("/surge-settings", createSurgeSetting);
 router.get("/surge-settings", getSurgeSettings);
 router.put("/surge-settings/:id", updateSurgeSetting);
+router.get("/delivery-partners", getDeliveryPartners);
 
 
 module.exports = router;

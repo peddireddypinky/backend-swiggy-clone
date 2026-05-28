@@ -4,6 +4,12 @@ const Restaurant = require("../config/models/restaurant");
 const FraudLogs = require("../config/models/FraudLogs");
 const SurgeSetting = require("../config/models/SurgeSetting");
 const { buildFraudScore } = require("../services/fraudService");
+const {
+    assignPartnerToOrder,
+    releasePartnerFromOrder,
+    getRestaurantCoordinates,
+} = require("../services/deliveryAssignmentService");
+const DeliveryPartner = require("../config/models/DeliveryPartner");
 const mongoose = require("mongoose");
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
@@ -38,7 +44,7 @@ const isNowInPeakHours = (peakHours = [], now = new Date()) => {
 
 const getActiveOrderVolumeForRegion = async (region, windowMinutes = 30) => {
     const since = new Date(Date.now() - windowMinutes * 60 * 1000);
-    const activeStatuses = ["pending", "confirmed", "preparing", "out for delivery"];
+    const activeStatuses = ["pending", "accepted", "preparing", "out_for_delivery"];
 
     const result = await Order.aggregate([
         {
@@ -194,11 +200,30 @@ exports.createOrder = async (req, res) => {
             });
         }
 
+        const restaurantCoordinates = getRestaurantCoordinates(cart.restaurant);
+        let assignmentMessage = null;
+        if (restaurantCoordinates) {
+            const assignment = await assignPartnerToOrder(order, restaurantCoordinates);
+            if (!assignment.assigned) {
+                assignmentMessage = "No available delivery partners found";
+            }
+        } else {
+            assignmentMessage = "Restaurant location not configured for partner assignment";
+        }
+
         await Cart.findOneAndDelete({ user: req.user._id });
+
+        const populatedOrder = await Order.findById(order._id)
+            .populate(
+                "assignedDeliveryPartner",
+                "name phone isAvailable activeDeliveries currentLocation"
+            );
+
         res.status(201).json({
             success: true,
             message: "Order placed successfully",
-            data: order,
+            ...(assignmentMessage ? { assignmentMessage } : {}),
+            data: populatedOrder,
         });
     } catch (error) {
         return res.status(500).json({
@@ -247,6 +272,11 @@ exports.cancelOrder = async (req, res) => {
                 success: false,
                 message: "Order is already cancelled",
             });
+        }
+
+        if (order.assignedDeliveryPartner) {
+            await releasePartnerFromOrder(order.assignedDeliveryPartner);
+            order.assignedDeliveryPartner = null;
         }
 
         order.orderStatus = "cancelled";
@@ -387,9 +417,8 @@ exports.mockPayment = async (req, res) => {
             });
         }
 
-        // Match schema field names and enum values
         order.paymentStatus = "paid";
-        order.orderStatus = "confirmed";
+        order.orderStatus = "accepted";
         await order.save();
 
         return res.status(200).json({
@@ -402,6 +431,66 @@ exports.mockPayment = async (req, res) => {
             success: false,
             message: "Error verifying mock payment",
             error: error.message,
+        });
+    }
+};
+
+exports.getOrderById = async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        if (!isValidObjectId(orderId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid order id",
+            });
+        }
+
+        const order = await Order.findById(orderId)
+            .populate(
+                "assignedDeliveryPartner",
+                "name phone isAvailable activeDeliveries currentLocation"
+            )
+            .populate("restaurant", "name address city owner")
+            .populate("user", "name email");
+
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: "Order not found",
+            });
+        }
+
+        const requesterId = req.user._id.toString();
+        const isOwner = order.user._id.toString() === requesterId;
+        const isRestaurantOwner =
+            req.user.role === "restaurant" &&
+            order.restaurant?.owner?.toString() === requesterId;
+        const isAdmin = req.user.role === "admin";
+
+        let isAssignedPartner = false;
+        if (req.user.role === "delivery") {
+            const partner = await DeliveryPartner.findOne({ user: req.user._id });
+            isAssignedPartner =
+                partner &&
+                order.assignedDeliveryPartner &&
+                order.assignedDeliveryPartner._id.toString() === partner._id.toString();
+        }
+
+        if (!isOwner && !isRestaurantOwner && !isAdmin && !isAssignedPartner) {
+            return res.status(403).json({
+                success: false,
+                message: "Not authorized to view this order",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: order,
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message,
         });
     }
 };
@@ -437,24 +526,42 @@ exports.getRestaurantOrders = async (req, res) => {
     }
 };
 
+const formatStatus = (status) => {
+    if (status === "out_for_delivery") return "Out For Delivery";
+    return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+};
+
 exports.updateOrderStatus = async (req, res) => {
     try {
-        const { id } = req.params;
+        const { orderId } = req.params;
         const { status } = req.body;
-        if (!isValidObjectId(id)) {
+        if (!isValidObjectId(orderId)) {
             return res.status(400).json({ success: false, message: "Invalid order id" });
         }
 
-        const order = await Order.findById(id).populate("restaurant");
+        const allowedStatuses = ["pending", "accepted", "preparing", "out_for_delivery", "delivered", "cancelled"];
+        if (!allowedStatuses.includes(status)) {
+            return res.status(400).json({ success: false, message: 'Invalid status' });
+        }
+
+        const order = await Order.findById(orderId).populate("restaurant");
         
         if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
-        if (order.restaurant.owner.toString() !== req.user._id.toString()) {
+        
+        const isAdmin = req.user && req.user.role === 'admin';
+        const isRestaurantOwner = req.user && order.restaurant.owner.toString() === req.user._id.toString();
+        
+        if (!isAdmin && !isRestaurantOwner) {
             return res.status(403).json({ success: false, message: 'Not authorized' });
         }
         
         order.orderStatus = status;
         await order.save();
-        res.status(200).json({ success: true, message: 'Order status updated', data: order });
+        
+        const notificationMessage = `Notification: Order status updated to ${formatStatus(status)}`;
+        console.log(notificationMessage);
+
+        res.status(200).json({ success: true, message: notificationMessage, data: order });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

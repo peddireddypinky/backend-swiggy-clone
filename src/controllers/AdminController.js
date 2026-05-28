@@ -2,6 +2,7 @@ const Order = require("../config/models/Order");
 const User = require("../config/models/User");
 const Restaurant = require("../config/models/restaurant");
 const SurgeSetting = require("../config/models/SurgeSetting");
+const DeliveryPartner = require("../config/models/DeliveryPartner");
 const mongoose = require("mongoose");
 
 const validateRestaurantPayload = (payload = {}, isUpdate = false) => {
@@ -381,6 +382,25 @@ exports.updateSurgeSetting = async (req, res) => {
         return res.status(isDup ? 409 : 500).json({
             success: false,
             message: isDup ? "Surge setting already exists for this region" : error.message,
+        });
+    }
+};
+
+exports.getDeliveryPartners = async (req, res) => {
+    try {
+        const partners = await DeliveryPartner.find()
+            .populate("user", "name email role")
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            success: true,
+            count: partners.length,
+            data: partners,
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message,
         });
     }
 };

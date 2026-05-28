@@ -39,9 +39,9 @@ const orderSchema = new mongoose.Schema(
       type: String,
       enum: [
         "pending",
-        "confirmed",
+        "accepted",
         "preparing",
-        "out for delivery",
+        "out_for_delivery",
         "delivered",
         "cancelled",
         "rejected",
@@ -89,6 +89,17 @@ const orderSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    assignedDeliveryPartner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "DeliveryPartner",
+      default: null,
+    },
+    declinedDeliveryPartners: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "DeliveryPartner",
+      },
+    ],
   },
   { timestamps: true }
 );
