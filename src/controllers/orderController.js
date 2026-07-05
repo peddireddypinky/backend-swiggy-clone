@@ -219,6 +219,13 @@ exports.createOrder = async (req, res) => {
                 "name phone isAvailable activeDeliveries currentLocation"
             );
 
+        const io = req.app.get("io");
+        io?.to(`order:${populatedOrder._id}`).emit("order:status", {
+            orderId: populatedOrder._id.toString(),
+            status: populatedOrder.orderStatus,
+            message: "Order placed successfully",
+        });
+
         res.status(201).json({
             success: true,
             message: "Order placed successfully",
@@ -539,7 +546,7 @@ exports.updateOrderStatus = async (req, res) => {
             return res.status(400).json({ success: false, message: "Invalid order id" });
         }
 
-        const allowedStatuses = ["pending", "accepted", "preparing", "out_for_delivery", "delivered", "cancelled"];
+        const allowedStatuses = ["pending", "accepted", "preparing", "out_for_delivery", "delivered", "cancelled", "rejected"];
         if (!allowedStatuses.includes(status)) {
             return res.status(400).json({ success: false, message: 'Invalid status' });
         }
@@ -557,6 +564,13 @@ exports.updateOrderStatus = async (req, res) => {
         
         order.orderStatus = status;
         await order.save();
+
+        const io = req.app.get("io");
+        io?.to(`order:${order._id}`).emit("order:status", {
+            orderId: order._id.toString(),
+            status: order.orderStatus,
+            message: `Order status updated to ${formatStatus(status)}`,
+        });
         
         const notificationMessage = `Notification: Order status updated to ${formatStatus(status)}`;
         console.log(notificationMessage);

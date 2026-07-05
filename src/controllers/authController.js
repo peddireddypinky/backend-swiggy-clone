@@ -59,12 +59,12 @@ exports.login = async (req, res) => {
                 .status(400)
                 .json({ success: false, message: "Invalid credentials" });
         }
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || "swiggy_secret_key", {
             expiresIn: "1d",
         });
         return res
             .status(200)
-            .json({ success: true, message: "User logged in successfully", token });
+            .json({ success: true, message: "User logged in successfully", token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
     } catch (error) {
         return res.status(500).json({ success: false, message: "Server error" });
     }

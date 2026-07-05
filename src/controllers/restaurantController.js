@@ -201,6 +201,8 @@ exports.searchRestaurants = async (req, res) => {
             vegOnly,
             popularity,
             sortBy,
+            page = 1,
+            limit = 10,
         } = req.query;
 
         const ratingNumber = parsePositiveNumber(rating);
@@ -312,11 +314,25 @@ exports.searchRestaurants = async (req, res) => {
             { $sort: sortStage },
         ];
 
-        const restaurants = await Restaurant.aggregate(pipeline);
+        const pageNumber = Number(page);
+        const limitNumber = Number(limit);
+        const skip = (pageNumber - 1) * limitNumber;
+
+        const paginatedPipeline = [
+            ...pipeline,
+            { $skip: Number.isFinite(skip) && skip > 0 ? skip : 0 },
+            { $limit: Number.isFinite(limitNumber) && limitNumber > 0 ? limitNumber : 10 },
+        ];
+
+        const restaurants = await Restaurant.aggregate(paginatedPipeline);
+        const totalCount = await Restaurant.countDocuments(matchStage);
 
         return res.status(200).json({
             success: true,
             count: restaurants.length,
+            totalCount,
+            page: Number.isFinite(pageNumber) && pageNumber > 0 ? pageNumber : 1,
+            limit: Number.isFinite(limitNumber) && limitNumber > 0 ? limitNumber : 10,
             data: restaurants,
         });
     } catch (error) {
@@ -427,7 +443,7 @@ exports.getRecommendations = async (req, res) => {
                         $add: [
                             { $multiply: ["$orderFrequency", 5] },
                             { $multiply: ["$cuisineSimilarityCount", 3] },
-                            { $ifNull: ["$rating", 0] },
+                            { $multiply: [{ $ifNull: ["$rating", 0] }, 2] },
                             { $multiply: [{ $ifNull: ["$popularity", 0] }, 0.1] },
                         ],
                     },
@@ -461,4 +477,4 @@ exports.getRecommendations = async (req, res) => {
             error: error.message,
         });
     }
-};
+};

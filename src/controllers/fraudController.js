@@ -47,14 +47,21 @@ exports.approveSuspiciousOrder = async (req, res) => {
         order.fraudReason = "";
         await order.save();
 
-        await FraudLogs.findOneAndUpdate(
-            { order: order._id },
-            {
+        const existingLog = await FraudLogs.findOne({ order: order._id }).sort({ createdAt: -1 });
+        if (existingLog) {
+            existingLog.action = "approved";
+            existingLog.reviewedBy = req.user._id;
+            await existingLog.save();
+        } else {
+            await FraudLogs.create({
+                user: order.user,
+                order: order._id,
+                riskScore: order.riskScore || 0,
+                fraudReason: order.fraudReason || "Reviewed by admin",
                 action: "approved",
                 reviewedBy: req.user._id,
-            },
-            { sort: { createdAt: -1 } }
-        );
+            });
+        }
 
         return res.status(200).json({
             success: true,
@@ -91,14 +98,21 @@ exports.rejectSuspiciousOrder = async (req, res) => {
         order.isSuspicious = true;
         await order.save();
 
-        await FraudLogs.findOneAndUpdate(
-            { order: order._id },
-            {
+        const existingLog = await FraudLogs.findOne({ order: order._id }).sort({ createdAt: -1 });
+        if (existingLog) {
+            existingLog.action = "rejected";
+            existingLog.reviewedBy = req.user._id;
+            await existingLog.save();
+        } else {
+            await FraudLogs.create({
+                user: order.user,
+                order: order._id,
+                riskScore: order.riskScore || 0,
+                fraudReason: order.fraudReason || "Reviewed by admin",
                 action: "rejected",
                 reviewedBy: req.user._id,
-            },
-            { sort: { createdAt: -1 } }
-        );
+            });
+        }
 
         return res.status(200).json({
             success: true,
